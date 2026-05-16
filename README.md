@@ -57,15 +57,6 @@ npx expo prebuild --platform android
 android/app/build/outputs/apk/release/app-release.apk
 ```
 
-## 安装到设备
-
-推荐用 push + `pm install`，避免某些设备上 `adb install` 触发系统安装确认导致卡住：
-
-```powershell
-adb -s <device-id> push android/app/build/outputs/apk/release/app-release.apk /data/local/tmp/pillar-valley-release.apk
-adb -s <device-id> shell pm install -r /data/local/tmp/pillar-valley-release.apk
-```
-
 ## 裸眼 3D 渲染要点
 
 游戏内部使用 `THREE.StereoCamera` 分别渲染左右眼，并将两个眼图写入同一个 2x1 atlas：左眼在左半屏，右眼在右半屏。该 atlas 作为 half-SBS 输入传给 CNSDK，由设备侧完成裸眼 3D 显示。
