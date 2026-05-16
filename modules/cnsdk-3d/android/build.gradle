@@ -1,0 +1,40 @@
+plugins {
+  id 'com.android.library'
+  id 'org.jetbrains.kotlin.android'
+}
+
+group = 'expo.modules.cnsdk3d'
+version = '0.1.0'
+
+android {
+  namespace 'expo.modules.cnsdk3d'
+  compileSdkVersion rootProject.ext.compileSdkVersion
+
+  defaultConfig {
+    minSdkVersion Math.max(rootProject.ext.minSdkVersion ?: 23, 30)
+    targetSdkVersion rootProject.ext.targetSdkVersion
+
+    externalNativeBuild {
+      cmake {
+        abiFilters 'arm64-v8a'
+      }
+    }
+  }
+
+  externalNativeBuild {
+    cmake {
+      path file('src/main/cpp/CMakeLists.txt')
+    }
+  }
+}
+
+repositories {
+  maven {
+    url = uri("$projectDir/maven")
+  }
+}
+
+dependencies {
+  implementation project(':expo-modules-core')
+  implementation 'com.leia:sdk:0.10.31'
+}

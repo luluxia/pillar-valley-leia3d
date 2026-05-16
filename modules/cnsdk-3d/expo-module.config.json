@@ -1,0 +1,6 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "modules": ["expo.modules.cnsdk3d.Cnsdk3DModule"]
+  }
+}

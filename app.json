@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "幻柱峡谷 3D",
+    "description": "适配裸眼 3D 的幻柱跳跃游戏",
+    "slug": "pillar-valley-leia3d",
+    "version": "12.0.5",
+    "orientation": "landscape",
+    "primaryColor": "#F09458",
+    "backgroundColor": "#F09458",
+    "userInterfaceStyle": "automatic",
+    "scheme": "plrvly",
+    "icon": "./icons/pillars/default-contained.png",
+    "githubUrl": "https://github.com/luluxia/pillar-valley-leia3d",
+    "splash": {
+      "image": "./icons/splash.png",
+      "backgroundColor": "#F09458",
+      "resizeMode": "cover"
+    },
+    "assetBundlePatterns": ["src/assets/**/*", "icons/splash.png"],
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./icons/pillars/default-adaptive-foreground.png",
+        "backgroundColor": "#F09458"
+      },
+      "package": "com.evanbacon.pillarvalley",
+      "permissions": ["CAMERA"]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./icons/pillars/default-contained.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 30
+          }
+        }
+      ],
+      "expo-sqlite",
+      [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": false
+        }
+      ]
+    ],
+    "experiments": {
+      "reactCompiler": true,
+      "tsconfigPaths": true,
+      "typedRoutes": true
+    }
+  }
+}

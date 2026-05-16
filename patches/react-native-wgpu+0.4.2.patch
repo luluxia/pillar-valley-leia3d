@@ -1,0 +1,272 @@
+diff --git a/node_modules/react-native-wgpu/android/build.gradle b/node_modules/react-native-wgpu/android/build.gradle
+index 51205e3..13acde1 100644
+--- a/node_modules/react-native-wgpu/android/build.gradle
++++ b/node_modules/react-native-wgpu/android/build.gradle
+@@ -135,4 +135,5 @@ dependencies {
+   // For > 0.71, this will be replaced by `com.facebook.react:react-android:$version` by react gradle plugin
+   //noinspection GradleDynamicVersion
+   implementation "com.facebook.react:react-native:+"
++  implementation "com.leia:sdk:0.10.31"
+ }
+diff --git a/node_modules/react-native-wgpu/android/src/main/java/com/webgpu/WebGPUCnsdkSurfaceView.java b/node_modules/react-native-wgpu/android/src/main/java/com/webgpu/WebGPUCnsdkSurfaceView.java
+new file mode 100644
+index 0000000..4780b28
+--- /dev/null
++++ b/node_modules/react-native-wgpu/android/src/main/java/com/webgpu/WebGPUCnsdkSurfaceView.java
+@@ -0,0 +1,193 @@
++package com.webgpu;
++
++import android.annotation.SuppressLint;
++import android.content.Context;
++import android.content.res.XmlResourceParser;
++import android.graphics.SurfaceTexture;
++import android.os.Handler;
++import android.os.Looper;
++import android.util.Log;
++import android.view.View;
++import android.view.Surface;
++import android.widget.FrameLayout;
++
++import androidx.annotation.NonNull;
++
++import com.leia.sdk.graphics.SurfaceTextureReadyCallback;
++import com.leia.sdk.views.InputViewsAsset;
++import com.leia.sdk.views.InterlacedSurfaceViewConfigAccessor;
++import com.leia.sdk.views.ScaleType;
++import com.leia.sdk.views.TileLayout;
++import com.leia.sdk.views.TextureView3D;
++import org.xmlpull.v1.XmlPullParser;
++
++@SuppressLint("ViewConstructor")
++public class WebGPUCnsdkSurfaceView extends FrameLayout implements SurfaceTextureReadyCallback {
++  private static final String TAG = "WebGPUCnsdkSurfaceView";
++
++  private final WebGPUAPI mApi;
++  private final TextureView3D mCnsdkView;
++  private InputViewsAsset mInputViewsAsset;
++  private SurfaceTexture mInputSurfaceTexture;
++  private Surface mInputSurface;
++  private int mConfiguredWidth;
++  private int mConfiguredHeight;
++  private int mSurfaceAttempt;
++  private boolean mSurfaceCreated;
++  private final Handler mHandler = new Handler(Looper.getMainLooper());
++
++  public WebGPUCnsdkSurfaceView(Context context, WebGPUAPI api) {
++    super(context);
++    mApi = api;
++    Log.i(TAG, "created");
++    mCnsdkView = createTextureView3D(context);
++    addView(
++      mCnsdkView,
++      new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
++    );
++  }
++
++  @Override
++  protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
++    super.onSizeChanged(width, height, oldWidth, oldHeight);
++    configureInputSurface(width, height, false);
++  }
++
++  @Override
++  public void onSurfaceTextureReady(SurfaceTexture surfaceTexture) {
++    mInputSurfaceTexture = surfaceTexture;
++    if (mConfiguredWidth > 0 && mConfiguredHeight > 0) {
++      surfaceTexture.setDefaultBufferSize(mConfiguredWidth, mConfiguredHeight);
++    }
++    if (mInputSurface != null) {
++      mInputSurface.release();
++    }
++    mInputSurface = new Surface(surfaceTexture);
++    mApi.surfaceCreated(mInputSurface);
++    mApi.surfaceChanged(mInputSurface);
++    mSurfaceCreated = true;
++    mHandler.removeCallbacksAndMessages(null);
++    Log.i(TAG, "CNSDK input surface ready " + mConfiguredWidth + "x" + mConfiguredHeight);
++  }
++
++  private void configureInputSurface(int width, int height, boolean force) {
++    if (width <= 0 || height <= 0) {
++      return;
++    }
++
++    int atlasWidth = width - (width % 2);
++    if (!force && atlasWidth == mConfiguredWidth && height == mConfiguredHeight && mInputViewsAsset != null) {
++      if (mInputSurface != null) {
++        mApi.surfaceChanged(mInputSurface);
++      }
++      return;
++    }
++
++    mConfiguredWidth = atlasWidth;
++    mConfiguredHeight = height;
++
++    mSurfaceAttempt++;
++    Log.i(TAG, "configure CNSDK input surface " + atlasWidth + "x" + height + " attempt=" + mSurfaceAttempt);
++    releaseInputSurface();
++
++    configureInterlacedView(atlasWidth, height);
++    mInputViewsAsset = InputViewsAsset.createEmptySurfaceForVideo(this);
++    mCnsdkView.setViewAsset(mInputViewsAsset);
++    scheduleSurfaceRetry();
++  }
++
++  private void scheduleSurfaceRetry() {
++    if (mSurfaceAttempt >= MAX_SURFACE_ATTEMPTS) {
++      Log.w(TAG, "CNSDK input surface was not ready after " + mSurfaceAttempt + " attempts");
++      return;
++    }
++
++    mHandler.postDelayed(() -> {
++      if (mSurfaceCreated || getParent() == null) {
++        return;
++      }
++      Log.w(TAG, "CNSDK input surface callback missing, recreating asset");
++      configureInputSurface(getWidth(), getHeight(), true);
++    }, SURFACE_RETRY_DELAY_MS);
++  }
++
++  private void configureInterlacedView(int width, int height) {
++    try (InterlacedSurfaceViewConfigAccessor config = mCnsdkView.getConfig()) {
++      config.setNumTiles(2, 1);
++      config.setTileLayout(TileLayout.LeftToRight_Down_RowMajor);
++      config.setIsHorizontalViewLayout(true);
++      config.setUseAtlasForViews(true);
++      config.setScaleType(ScaleType.FILL);
++      config.setSourceMediaIsVideo(true);
++      config.setSourceMediaScaleX(1.0f);
++      config.setSourceMediaScaleY(1.0f);
++      config.setSourceSize(width, height);
++      config.setSingleViewMode(false);
++    }
++  }
++
++  private void releaseInputSurface() {
++    if (mSurfaceCreated) {
++      mApi.surfaceDestroyed();
++      mSurfaceCreated = false;
++    }
++    if (mInputSurface != null) {
++      mInputSurface.release();
++      mInputSurface = null;
++    }
++    mInputSurfaceTexture = null;
++    if (mInputViewsAsset != null) {
++      mCnsdkView.releaseInputViewsAsset();
++      mInputViewsAsset.close();
++      mInputViewsAsset = null;
++    }
++  }
++
++  @Override
++  protected void onDetachedFromWindow() {
++    super.onDetachedFromWindow();
++    mHandler.removeCallbacksAndMessages(null);
++    releaseInputSurface();
++  }
++
++  @Override
++  protected void onAttachedToWindow() {
++    super.onAttachedToWindow();
++    configureInputSurface(getWidth(), getHeight(), false);
++  }
++
++  @Override
++  public void setAlpha(float alpha) {
++    super.setAlpha(alpha);
++    mCnsdkView.setAlpha(alpha);
++  }
++
++  @Override
++  protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
++    super.onLayout(changed, left, top, right, bottom);
++    int width = right - left;
++    int height = bottom - top;
++    mCnsdkView.measure(
++      View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
++      View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
++    );
++    mCnsdkView.layout(0, 0, width, height);
++  }
++
++  private static final int MAX_SURFACE_ATTEMPTS = 12;
++  private static final long SURFACE_RETRY_DELAY_MS = 1500L;
++
++  private static TextureView3D createTextureView3D(Context context) {
++    XmlResourceParser parser = context.getResources().getXml(R.xml.cnsdk_texture_view_3d);
++    try {
++      int eventType;
++      do {
++        eventType = parser.next();
++      } while (eventType != XmlPullParser.START_TAG && eventType != XmlPullParser.END_DOCUMENT);
++      return new TextureView3D(context, parser);
++    } catch (Exception error) {
++      parser.close();
++      throw new IllegalStateException("Failed to create CNSDK TextureView3D", error);
++    }
++  }
++}
+diff --git a/node_modules/react-native-wgpu/android/src/main/java/com/webgpu/WebGPUView.java b/node_modules/react-native-wgpu/android/src/main/java/com/webgpu/WebGPUView.java
+index 3f73a10..3a80d44 100644
+--- a/node_modules/react-native-wgpu/android/src/main/java/com/webgpu/WebGPUView.java
++++ b/node_modules/react-native-wgpu/android/src/main/java/com/webgpu/WebGPUView.java
+@@ -2,6 +2,7 @@ package com.webgpu;
+ 
+ import android.content.Context;
+ import android.os.Build;
++import android.util.Log;
+ import android.view.Surface;
+ import android.view.View;
+ 
+@@ -11,6 +12,7 @@ import com.facebook.react.views.view.ReactViewGroup;
+ 
+ public class WebGPUView extends ReactViewGroup implements WebGPUAPI {
+ 
++  private static final String TAG = "WebGPUView";
+ 
+   private int mContextId;
+   private boolean mTransparent = false;
+@@ -19,6 +21,7 @@ public class WebGPUView extends ReactViewGroup implements WebGPUAPI {
+ 
+   WebGPUView(Context context) {
+     super(context);
++    Log.i(TAG, "created");
+   }
+ 
+   public void setContextId(int contextId) {
+@@ -29,6 +32,10 @@ public class WebGPUView extends ReactViewGroup implements WebGPUAPI {
+       }
+     }
+     mContextId = contextId;
++    Log.i(TAG, "setContextId " + contextId);
++    if (mView == null) {
++      setTransparent(mTransparent);
++    }
+   }
+ 
+   public void setTransparent(boolean value) {
+@@ -42,10 +49,12 @@ public class WebGPUView extends ReactViewGroup implements WebGPUAPI {
+ //        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+ //          mView = new WebGPUAHBView(ctx, this);
+ //        } else {
++          Log.i(TAG, "using WebGPUTextureView");
+           mView = new WebGPUTextureView(ctx, this);
+ //        }
+       } else {
+-        mView = new WebGPUSurfaceView(ctx, this);
++        Log.i(TAG, "using WebGPUCnsdkSurfaceView");
++        mView = new WebGPUCnsdkSurfaceView(ctx, this);
+       }
+       addView(mView);
+     }
+diff --git a/node_modules/react-native-wgpu/android/src/main/res/xml/cnsdk_texture_view_3d.xml b/node_modules/react-native-wgpu/android/src/main/res/xml/cnsdk_texture_view_3d.xml
+new file mode 100644
+index 0000000..04e0e65
+--- /dev/null
++++ b/node_modules/react-native-wgpu/android/src/main/res/xml/cnsdk_texture_view_3d.xml
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="utf-8"?>
++<com.leia.sdk.views.TextureView3D xmlns:android="http://schemas.android.com/apk/res/android"
++  android:layout_width="match_parent"
++  android:layout_height="match_parent" />
